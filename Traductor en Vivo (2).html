@@ -850,9 +850,11 @@
 
   function speak(text, lang) {
     return new Promise(resolve => {
-      const u = new SpeechSynthesisUtterance(text);
+      // Protección: no hablar texto vacío (causa tic-tac en Android)
+      if (!text || !text.trim()) { resolve(); return; }
+      const u = new SpeechSynthesisUtterance(text.trim());
       u.lang = lang;
-      u.rate = 1.1;   // un poco más rápido que lo normal
+      u.rate = 1.1;
       u.pitch = 1.0;
       u.volume = 1.0;
       if (selectedVoice) u.voice = selectedVoice;
@@ -863,7 +865,8 @@
         resolve();
       };
       u.onerror = () => { ind.classList.remove('visible'); resolve(); };
-      window.speechSynthesis.speak(u);
+      // setTimeout 150ms evita el click/tic-tac del sistema en Android
+      setTimeout(() => window.speechSynthesis.speak(u), 150);
     });
   }
 
