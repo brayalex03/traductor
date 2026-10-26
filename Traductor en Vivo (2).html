@@ -361,6 +361,7 @@
         <div class="cfg-row-btns" id="listen-langs">
           <button class="lang-btn selected" data-lang="es-ES" onclick="selectLang('listen',this)">🇪🇸 ES</button>
           <button class="lang-btn" data-lang="en-US" onclick="selectLang('listen',this)">🇺🇸 EN</button>
+          <button class="lang-btn" data-lang="es" onclick="selectLang('listen',this)" style="font-size:0.75rem;">ES alt</button>
         </div>
       </div>
       <div class="cfg-row">
@@ -517,7 +518,7 @@
   let totalApiMs = 0;
   let totalTtsMs = 0;
 
-  const LANG_NAMES = { 'es-ES': 'Español', 'en-US': 'English' };
+  const LANG_NAMES = { 'es-ES': 'Español', 'es': 'Español (alt)', 'en-US': 'English' };
 
   // ══ VOCES — elige la mejor disponible ══
   function loadVoices() {
