@@ -359,15 +359,14 @@
       <div class="cfg-row">
         <span class="cfg-row-label">🎧 Escuchar</span>
         <div class="cfg-row-btns" id="listen-langs">
-          <button class="lang-btn selected" data-lang="es-ES" onclick="selectLang('listen',this)">🇪🇸 ES</button>
+          <button class="lang-btn selected" data-lang="es-US" onclick="selectLang('listen',this)">🇪🇸 ES</button>
           <button class="lang-btn" data-lang="en-US" onclick="selectLang('listen',this)">🇺🇸 EN</button>
-          <button class="lang-btn" data-lang="es" onclick="selectLang('listen',this)" style="font-size:0.75rem;">ES alt</button>
         </div>
       </div>
       <div class="cfg-row">
         <span class="cfg-row-label">🔊 Traducir</span>
         <div class="cfg-row-btns" id="translate-langs">
-          <button class="lang-btn sel-tr" data-lang="es-ES" onclick="selectLang('translate',this)">🇪🇸 ES</button>
+          <button class="lang-btn sel-tr" data-lang="es-US" onclick="selectLang('translate',this)">🇪🇸 ES</button>
           <button class="lang-btn sel-tr selected" data-lang="en-US" onclick="selectLang('translate',this)">🇺🇸 EN</button>
         </div>
       </div>
@@ -489,7 +488,7 @@
   }
 
   // ══ Estado ══
-  let listenLang = 'es-ES';
+  let listenLang = 'es-US';
   let translateLang = 'en-US';
   let recognition = null;
   let wakeLock = null;
@@ -518,7 +517,7 @@
   let totalApiMs = 0;
   let totalTtsMs = 0;
 
-  const LANG_NAMES = { 'es-ES': 'Español', 'es': 'Español (alt)', 'en-US': 'English' };
+  const LANG_NAMES = { 'es-US': 'Español', 'en-US': 'English' };
 
   // ══ VOCES — elige la mejor disponible ══
   function loadVoices() {
