@@ -737,9 +737,7 @@
   function startListening() {
     if (useGoogleSTT) { startGoogleSTT(); return; }
 
-    // En Android, Web Speech API suele fallar silenciosamente — usar Google STT directo
-    const isAndroid = /Android/i.test(navigator.userAgent);
-    if (isAndroid) { useGoogleSTT = true; startGoogleSTT(); return; }
+    // Solo usar Google STT si Web Speech falla (ver onerror)
 
     if (recognition) recognition.abort();
     clearTimeout(restartTimer);
