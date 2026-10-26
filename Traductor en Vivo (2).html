@@ -151,17 +151,20 @@
     transition: width .05s;
   }
 
-  /* Alerta de nivel de audio */
+  /* Alerta de nivel de audio — siempre visible, solo cambia el texto */
   #audio-alert {
-    display: none;
+    display: block;
     font-size: 0.78rem;
     font-weight: 600;
     padding: 3px 8px;
     border-radius: 6px;
     text-align: center;
+    min-height: 22px;
+    background: transparent;
+    color: transparent;
   }
-  #audio-alert.weak { background: #fef9c3; color: #854d0e; display: block; }
-  #audio-alert.loud { background: #fef2f2; color: #dc2626; display: block; }
+  #audio-alert.weak { background: #fef9c3; color: #854d0e; }
+  #audio-alert.loud { background: #fef2f2; color: #dc2626; }
 
   .voice-select {
     width: 100%;
