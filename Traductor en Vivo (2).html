@@ -731,6 +731,10 @@
   function startListening() {
     if (useGoogleSTT) { startGoogleSTT(); return; }
 
+    // En Android, Web Speech API suele fallar silenciosamente — usar Google STT directo
+    const isAndroid = /Android/i.test(navigator.userAgent);
+    if (isAndroid) { useGoogleSTT = true; startGoogleSTT(); return; }
+
     if (recognition) recognition.abort();
     clearTimeout(restartTimer);
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -760,13 +764,15 @@
     recognition.onerror = (e) => {
       if (e.error === 'no-speech') { scheduleRestart(500); return; }
       if (e.error === 'aborted') return;
-      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed' ||
+          e.error === 'network' || e.error === 'service-not-allowed') {
         // Web Speech bloqueado — cambiar a Google Cloud STT
         useGoogleSTT = true;
-        startGoogleSTT();
+        showError('Cambiando a Google STT (error: ' + e.error + ')...');
+        setTimeout(() => { hideError(); startGoogleSTT(); }, 1000);
         return;
       }
-      showError('Error: ' + e.error);
+      showError('STT error: ' + e.error);
       scheduleRestart(2000);
     };
 
