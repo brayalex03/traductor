@@ -811,7 +811,8 @@
     recognition.onerror = (e) => {
       if (e.error === 'no-speech') { scheduleRestart(300); return; }
       if (e.error === 'aborted') return;
-      showError('Error: ' + e.error);
+      // Mostrar error detallado para diagnóstico
+      showError('Error STT: ' + e.error + (e.message ? ' — ' + e.message : ''));
       scheduleRestart(1500);
     };
 
