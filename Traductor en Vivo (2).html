@@ -437,6 +437,8 @@
 </div>
 
 <script>
+  const GOOGLE_STT_KEY = 'AIzaSyAPrWAq50_7VAva04gTUxqKWDlCuKPuJFg';
+
   let listenLang = 'es-US';
   let translateLang = 'en-US';
   let recognition = null;
@@ -447,6 +449,12 @@
   let allVoices = [];
   let sttStart = 0;
   let sessionActive = false;
+
+  // Google Cloud STT (MediaRecorder)
+  let mediaRecorder = null;
+  let audioChunks = [];
+  let gRecordTimer = null;
+  let useGoogleSTT = false;  // se activa automáticamente si Web Speech falla
 
   let listenConfirmed = '';
   let translateConfirmed = '';
@@ -639,11 +647,93 @@
     document.getElementById('status-row').classList.remove('visible');
   }
 
-  // ── RECONOCIMIENTO ──
+  // ── GOOGLE CLOUD STT ──
+  async function startGoogleSTT() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+      audioChunks = [];
+      mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+      mediaRecorder.onstop = async () => {
+        if (!sessionActive || isSpeaking) return;
+        const blob = new Blob(audioChunks, { type: 'audio/webm' });
+        audioChunks = [];
+        const base64 = await blobToBase64(blob);
+        await sendToGoogleSTT(base64);
+        if (sessionActive && !isSpeaking) {
+          startGoogleSTT();  // siguiente ciclo
+        }
+      };
+      mediaRecorder.start();
+      gRecordTimer = setTimeout(() => {
+        if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
+      }, 5000);  // grabar 5 segundos por ciclo
+      setStatus('Escuchando...');
+    } catch(err) {
+      showError('Error de micrófono: ' + err.message);
+    }
+  }
+
+  function stopGoogleSTT() {
+    clearTimeout(gRecordTimer);
+    if (mediaRecorder) {
+      try { mediaRecorder.stream.getTracks().forEach(t => t.stop()); } catch(e){}
+      mediaRecorder = null;
+    }
+    audioChunks = [];
+  }
+
+  function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  async function sendToGoogleSTT(base64Audio) {
+    if (!sessionActive || isSpeaking) return;
+    try {
+      setStatus('Procesando...');
+      const langCode = listenLang.split('-')[0] === 'es' ? 'es-US' : 'en-US';
+      const body = {
+        config: {
+          encoding: 'WEBM_OPUS',
+          sampleRateHertz: 48000,
+          languageCode: langCode,
+          enableAutomaticPunctuation: true,
+        },
+        audio: { content: base64Audio }
+      };
+      const r = await fetch(
+        `https://speech.googleapis.com/v1/speech:recognize?key=${GOOGLE_STT_KEY}`,
+        { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) }
+      );
+      const d = await r.json();
+      if (d.results && d.results.length > 0) {
+        const text = d.results.map(r => r.alternatives[0].transcript).join(' ').trim();
+        if (text) {
+          listenConfirmed += (listenConfirmed ? ' ' : '') + text;
+          renderListenPanel('');
+          await handleFinal(text, Date.now() - sttStart);
+        }
+      } else {
+        setStatus('Escuchando...');
+      }
+    } catch(err) {
+      showError('Error Google STT: ' + err.message);
+    }
+  }
+
+  // ── RECONOCIMIENTO WEB SPEECH API ──
   function startListening() {
+    if (useGoogleSTT) { startGoogleSTT(); return; }
+
     if (recognition) recognition.abort();
     clearTimeout(restartTimer);
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { useGoogleSTT = true; startGoogleSTT(); return; }
     recognition = new SR();
     recognition.lang = listenLang;
     recognition.continuous = true;
@@ -669,6 +759,12 @@
     recognition.onerror = (e) => {
       if (e.error === 'no-speech') { scheduleRestart(500); return; }
       if (e.error === 'aborted') return;
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+        // Web Speech bloqueado — cambiar a Google Cloud STT
+        useGoogleSTT = true;
+        startGoogleSTT();
+        return;
+      }
       showError('Error: ' + e.error);
       scheduleRestart(2000);
     };
@@ -680,6 +776,7 @@
   function stopListening() {
     clearTimeout(restartTimer);
     if (recognition) { recognition.abort(); recognition = null; }
+    stopGoogleSTT();
   }
 
   function scheduleRestart(ms) {
