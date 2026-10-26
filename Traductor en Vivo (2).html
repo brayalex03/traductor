@@ -680,7 +680,7 @@
         if (mediaRecorder && mediaRecorder.state === 'recording') {
           mediaRecorder.stop();
         }
-      }, 3000);  // 3 segundos para más rapidez
+      }, 1500);  // 1.5 segundos para más rapidez
     } catch(err) {
       showError('Error de micrófono: ' + err.message);
     }
@@ -737,7 +737,9 @@
   function startListening() {
     if (useGoogleSTT) { startGoogleSTT(); return; }
 
-    // Solo usar Google STT si Web Speech falla (ver onerror)
+    // En Android, Web Speech API falla silenciosamente — usar Google STT
+    const isAndroid = /Android/i.test(navigator.userAgent);
+    if (isAndroid) { useGoogleSTT = true; startGoogleSTT(); return; }
 
     if (recognition) recognition.abort();
     clearTimeout(restartTimer);
