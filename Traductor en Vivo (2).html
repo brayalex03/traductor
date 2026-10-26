@@ -359,14 +359,14 @@
       <div class="cfg-row">
         <span class="cfg-row-label">🎧 Escuchar</span>
         <div class="cfg-row-btns" id="listen-langs">
-          <button class="lang-btn selected" data-lang="es-US" onclick="selectLang('listen',this)">🇪🇸 ES</button>
+          <button class="lang-btn selected" data-lang="es-ES" onclick="selectLang('listen',this)">🇪🇸 ES</button>
           <button class="lang-btn" data-lang="en-US" onclick="selectLang('listen',this)">🇺🇸 EN</button>
         </div>
       </div>
       <div class="cfg-row">
         <span class="cfg-row-label">🔊 Traducir</span>
         <div class="cfg-row-btns" id="translate-langs">
-          <button class="lang-btn sel-tr" data-lang="es-US" onclick="selectLang('translate',this)">🇪🇸 ES</button>
+          <button class="lang-btn sel-tr" data-lang="es-ES" onclick="selectLang('translate',this)">🇪🇸 ES</button>
           <button class="lang-btn sel-tr selected" data-lang="en-US" onclick="selectLang('translate',this)">🇺🇸 EN</button>
         </div>
       </div>
@@ -488,7 +488,7 @@
   }
 
   // ══ Estado ══
-  let listenLang = 'es-US';
+  let listenLang = 'es-ES';
   let translateLang = 'en-US';
   let recognition = null;
   let wakeLock = null;
@@ -516,7 +516,7 @@
   let totalApiMs = 0;
   let totalTtsMs = 0;
 
-  const LANG_NAMES = { 'es-US': 'Español', 'en-US': 'English' };
+  const LANG_NAMES = { 'es-ES': 'Español', 'en-US': 'English' };
 
   // ══ VOCES — elige la mejor disponible ══
   function loadVoices() {
@@ -678,7 +678,7 @@
         if (selectedVoice) u.voice = selectedVoice;
         u.rate = 1.1; u.volume = 1.0; u.onend = res; u.onerror = () => rej();
         window.speechSynthesis.cancel();
-        setTimeout(() => window.speechSynthesis.speak(u), 100);
+        setTimeout(() => window.speechSynthesis.speak(u), 300);
         setTimeout(() => rej(), 8000);
       });
       btn.textContent = '✅ OK'; btn.classList.add('success');
@@ -876,8 +876,9 @@
         resolve();
       };
       u.onerror = () => { ind.classList.remove('visible'); resolve(); };
-      // setTimeout 150ms evita el click/tic-tac del sistema en Android
-      setTimeout(() => window.speechSynthesis.speak(u), 150);
+      // cancel() + 300ms evita el click/tic-tac del sistema en Android
+      window.speechSynthesis.cancel();
+      setTimeout(() => window.speechSynthesis.speak(u), 300);
     });
   }
 
