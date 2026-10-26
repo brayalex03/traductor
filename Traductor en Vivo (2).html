@@ -455,6 +455,7 @@
   let audioChunks = [];
   let gRecordTimer = null;
   let useGoogleSTT = false;  // se activa automáticamente si Web Speech falla
+  let currentMimeType = 'audio/webm;codecs=opus';
 
   let listenConfirmed = '';
   let translateConfirmed = '';
@@ -628,6 +629,7 @@
       showError('Usa Chrome para el reconocimiento de voz.'); return;
     }
     sessionActive = true;
+    useGoogleSTT = false;  // siempre empezar con Web Speech; Google STT solo si falla
     listenConfirmed = ''; translateConfirmed = '';
     renderListenPanel('');
     renderTranslatePanel();
@@ -651,17 +653,23 @@
   async function startGoogleSTT() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+      // Detectar formato soportado (Android puede no soportar webm)
+      currentMimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm')
+          ? 'audio/webm'
+          : 'audio/ogg;codecs=opus';
+      mediaRecorder = new MediaRecorder(stream, { mimeType: currentMimeType });
       audioChunks = [];
       mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
       mediaRecorder.onstop = async () => {
         if (!sessionActive || isSpeaking) return;
-        const blob = new Blob(audioChunks, { type: 'audio/webm' });
+        const blob = new Blob(audioChunks, { type: currentMimeType });
         audioChunks = [];
         const base64 = await blobToBase64(blob);
         await sendToGoogleSTT(base64);
-        if (sessionActive && !isSpeaking) {
-          startGoogleSTT();  // siguiente ciclo
+        if (sessionActive && !isSpeaking && useGoogleSTT) {
+          startGoogleSTT();  // siguiente ciclo solo si seguimos en modo Google STT
         }
       };
       mediaRecorder.start();
@@ -698,7 +706,7 @@
       setStatus('Procesando...');
       const langCode = listenLang.split('-')[0] === 'es' ? 'es-US' : 'en-US';
       const r = await fetch(STT_PROXY_URL,
-        { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ audio: base64Audio, languageCode: langCode }) }
+        { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ audio: base64Audio, languageCode: langCode, mimeType: currentMimeType }) }
       );
       const d = await r.json();
       if (d.results && d.results.length > 0) {
@@ -712,7 +720,10 @@
         setStatus('Escuchando...');
       }
     } catch(err) {
-      showError('Error Google STT: ' + err.message);
+      // Si el proxy falla (red, CORS, URL incorrecta), volver a Web Speech si está disponible
+      useGoogleSTT = false;
+      showError('Google STT no disponible, volviendo a modo estándar...');
+      setTimeout(() => { hideError(); if (sessionActive) startListening(); }, 2000);
     }
   }
 

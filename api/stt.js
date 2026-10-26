@@ -7,8 +7,18 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return; }
 
   try {
-    const { audio, languageCode } = req.body;
+    const { audio, languageCode, mimeType } = req.body;
     const key = process.env.GOOGLE_STT_KEY;
+
+    // Detectar encoding según mimeType enviado desde el cliente
+    let encoding = 'WEBM_OPUS';
+    let sampleRateHertz = 48000;
+    if (mimeType && mimeType.includes('ogg')) {
+      encoding = 'OGG_OPUS';
+      sampleRateHertz = 48000;
+    } else if (mimeType && mimeType.includes('webm') && !mimeType.includes('opus')) {
+      encoding = 'WEBM_OPUS';
+    }
 
     const response = await fetch(
       `https://speech.googleapis.com/v1/speech:recognize?key=${key}`,
@@ -17,8 +27,8 @@ export default async function handler(req, res) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           config: {
-            encoding: 'WEBM_OPUS',
-            sampleRateHertz: 48000,
+            encoding,
+            sampleRateHertz,
             languageCode: languageCode || 'es-US',
             enableAutomaticPunctuation: true,
           },
