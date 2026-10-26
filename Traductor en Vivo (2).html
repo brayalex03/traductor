@@ -680,7 +680,7 @@
         if (mediaRecorder && mediaRecorder.state === 'recording') {
           mediaRecorder.stop();
         }
-      }, 2500);  // 2.5 segundos - más natural, menos cortes
+      }, 4000);  // 4 segundos - oración completa
     } catch(err) {
       showError('Error de micrófono: ' + err.message);
     }
