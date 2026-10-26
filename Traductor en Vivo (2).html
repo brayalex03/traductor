@@ -73,7 +73,6 @@
     gap: 8px;
   }
 
-  /* Grid 2 columnas */
   .config-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -91,7 +90,6 @@
   }
   .cfg-row-btns { display: flex; gap: 6px; }
 
-  /* Botones de idioma */
   .lang-btn {
     flex: 1;
     padding: 8px 4px;
@@ -118,7 +116,6 @@
     color: var(--accent2);
   }
 
-  /* Botones de permiso */
   .perm-btn {
     flex: 1;
     padding: 8px 4px;
@@ -154,7 +151,18 @@
     transition: width .05s;
   }
 
-  /* Selector de voz — debajo del grid */
+  /* Alerta de nivel de audio */
+  #audio-alert {
+    display: none;
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 6px;
+    text-align: center;
+  }
+  #audio-alert.weak { background: #fef9c3; color: #854d0e; display: block; }
+  #audio-alert.loud { background: #fef2f2; color: #dc2626; display: block; }
+
   .voice-select {
     width: 100%;
     padding: 9px 28px 9px 10px;
@@ -173,7 +181,7 @@
     background-position: right 10px center;
   }
 
-  /* ══ PANELS (siempre visibles) ══ */
+  /* ══ PANELS ══ */
   .panels {
     flex: 1;
     display: flex;
@@ -229,6 +237,8 @@
   .panel-text .placeholder { color: var(--fg2); font-style: italic; font-size: 1rem; }
   .panel-text .confirmed   { color: var(--fg); }
   .panel-text .pending     { color: var(--fg2); font-style: italic; }
+  /* Traducción provisional en tiempo real */
+  .panel-text .tr-pending  { color: var(--accent2); font-style: italic; opacity: 0.75; }
 
   .speaking-indicator {
     display: none;
@@ -335,7 +345,6 @@
 
     <!-- COLUMNA 1: Idiomas -->
     <div class="config-col">
-      <!-- Fila 1: Escuchar -->
       <div class="cfg-row">
         <span class="cfg-row-label">🎧 Escuchar</span>
         <div class="cfg-row-btns" id="listen-langs">
@@ -343,7 +352,6 @@
           <button class="lang-btn" data-lang="en-US" onclick="selectLang('listen',this)">🇺🇸 EN</button>
         </div>
       </div>
-      <!-- Fila 2: Traducir -->
       <div class="cfg-row">
         <span class="cfg-row-label">🔊 Traducir</span>
         <div class="cfg-row-btns" id="translate-langs">
@@ -355,7 +363,6 @@
 
     <!-- COLUMNA 2: Permisos -->
     <div class="config-col">
-      <!-- Fila 1: Audio -->
       <div class="cfg-row">
         <span class="cfg-row-label">🔊 Audio</span>
         <div class="cfg-row-btns">
@@ -363,7 +370,6 @@
           <button class="perm-btn" id="test-audio-btn" onclick="runAudioTest()" disabled>Prueba</button>
         </div>
       </div>
-      <!-- Fila 2: Micrófono + barra nivel -->
       <div class="cfg-row">
         <span class="cfg-row-label">🎙 Micrófono</span>
         <div class="cfg-row-btns">
@@ -373,6 +379,7 @@
         <div class="mic-level-wrap" id="mic-level-wrap">
           <div id="mic-bar"></div>
         </div>
+        <div id="audio-alert"></div>
       </div>
     </div>
 
@@ -386,8 +393,8 @@
   <!-- Aviso sandbox -->
   <div id="sandbox-notice" style="display:none;background:#fff7ed;border:2px solid #f97316;border-radius:10px;padding:9px 12px;font-size:0.88rem;font-weight:600;color:#9a3412;text-align:center;">
     ⚠️ El micrófono no funciona dentro del visor de Claude.<br>
-    <span style="font-weight:400;">Descarga el archivo HTML y ábrelo en Chrome:</span><br>
-    <button onclick="downloadHTML()" style="display:inline-block;margin-top:6px;background:#f97316;color:#fff;padding:8px 18px;border-radius:8px;font-weight:700;border:none;cursor:pointer;font-size:0.92rem;">⬇️ Descargar traductor.html</button>
+    <span style="font-weight:400;">Ábrelo en Chrome directamente:</span><br>
+    <a id="open-link" href="#" target="_blank" style="display:inline-block;margin-top:6px;background:#f97316;color:#fff;padding:8px 18px;border-radius:8px;font-weight:700;text-decoration:none;font-size:0.92rem;">🔗 Abrir en Chrome</a>
   </div>
 </div>
 
@@ -437,27 +444,83 @@
 </div>
 
 <script>
+  // ══════════════════════════════════════════
+  // VOCABULARIO PROPIO — editar aquí términos
+  // que siempre deben traducirse igual
+  // ══════════════════════════════════════════
+  const VOCAB = {
+    // español → inglés
+    'es': {
+      'mojito': 'mojito',
+      'por favor': 'please',
+      'gracias': 'thank you',
+    },
+    // inglés → español
+    'en': {
+      'please': 'por favor',
+      'thank you': 'gracias',
+    }
+  };
+
+  function applyVocab(text, fromLang) {
+    const code = fromLang.split('-')[0];
+    const map = VOCAB[code] || {};
+    let out = text;
+    for (const [k, v] of Object.entries(map)) {
+      out = out.replace(new RegExp('\\b' + k + '\\b', 'gi'), v);
+    }
+    return out;
+  }
+
+  // ══ Estado ══
   let listenLang = 'es-US';
   let translateLang = 'en-US';
   let recognition = null;
-  let isSpeaking = false;
-  let restartTimer = null;
   let wakeLock = null;
   let selectedVoice = null;
   let allVoices = [];
   let sttStart = 0;
   let sessionActive = false;
 
+  // Texto acumulado en los paneles
   let listenConfirmed = '';
   let translateConfirmed = '';
+  let translatePending = '';  // traducción provisional en tiempo real
+
+  // Buffer para juntar fragmentos antes de enviar a TTS
+  let pendingBuffer = '';
+  let bufferTimer = null;
+  const BUFFER_DELAY = 800;  // ms de silencio antes de traducir
+
+  // Cola de voz (TTS): micrófono siempre abierto
+  let ttsQueue = [];
+  let ttsBusy = false;
+
+  // Latencia del último ciclo
+  let lastSttMs = 0;
+  let totalApiMs = 0;
+  let totalTtsMs = 0;
 
   const LANG_NAMES = { 'es-US': 'Español', 'en-US': 'English' };
 
-  // ── VOICES ──
+  // ══ VOCES — elige la mejor disponible ══
   function loadVoices() {
     allVoices = window.speechSynthesis.getVoices();
     populateVoiceSelect();
   }
+
+  function bestVoiceFor(lang) {
+    const code = lang.split('-')[0];
+    // Prioridad: voces locales del dispositivo primero (no remote/network)
+    const candidates = allVoices.filter(v => v.lang.startsWith(code));
+    const local = candidates.filter(v => v.localService);
+    const pool = local.length ? local : candidates;
+    if (!pool.length) return null;
+    // Preferir voces con "natural", "enhanced", "premium" en el nombre
+    const premium = pool.find(v => /natural|enhanced|premium|compact/i.test(v.name));
+    return premium || pool[0];
+  }
+
   function populateVoiceSelect() {
     const sel = document.getElementById('voice-select');
     const tgt = translateLang.split('-')[0];
@@ -471,7 +534,8 @@
       const g = document.createElement('optgroup'); g.label = '✅ Para este idioma';
       relevant.forEach((v) => {
         const o = document.createElement('option');
-        o.value = allVoices.indexOf(v); o.textContent = v.name;
+        o.value = allVoices.indexOf(v);
+        o.textContent = v.name + (v.localService ? ' 📱' : ' 🌐');
         g.appendChild(o);
       }); sel.appendChild(g);
     }
@@ -483,8 +547,16 @@
         g.appendChild(o);
       }); sel.appendChild(g);
     }
-    sel.selectedIndex = 0; updateSelectedVoice();
+    // Auto-seleccionar la mejor voz
+    const best = bestVoiceFor(translateLang);
+    if (best) {
+      sel.value = allVoices.indexOf(best);
+    } else {
+      sel.selectedIndex = 0;
+    }
+    updateSelectedVoice();
   }
+
   function updateSelectedVoice() {
     const sel = document.getElementById('voice-select');
     const idx = parseInt(sel.value);
@@ -494,8 +566,9 @@
   window.speechSynthesis.onvoiceschanged = loadVoices;
   loadVoices();
 
-  // ── PERMISOS ──
+  // ══ PERMISOS ══
   let micStream = null, micOk = false, audioOk = false;
+  let micAnalyser = null, micCtx = null;
 
   function checkStartReady() {
     const ok = micOk && audioOk;
@@ -516,7 +589,6 @@
       startMicMeter();
     } catch(e) {
       btn.textContent = '❌ Error'; btn.classList.add('error'); btn.disabled = false;
-      // Mostrar aviso para abrir en Chrome
       const notice = document.getElementById('sandbox-notice');
       notice.style.display = 'block';
       document.getElementById('open-link').href = window.location.href;
@@ -527,14 +599,25 @@
     if (!micStream) return;
     const wrap = document.getElementById('mic-level-wrap');
     wrap.style.display = 'block';
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const src = ctx.createMediaStreamSource(micStream);
-    const an = ctx.createAnalyser(); an.fftSize = 256; src.connect(an);
-    const d = new Uint8Array(an.frequencyBinCount);
+    micCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const src = micCtx.createMediaStreamSource(micStream);
+    micAnalyser = micCtx.createAnalyser(); micAnalyser.fftSize = 256;
+    src.connect(micAnalyser);
+    const d = new Uint8Array(micAnalyser.frequencyBinCount);
+    const alert = document.getElementById('audio-alert');
     (function tick() {
-      an.getByteFrequencyData(d);
+      micAnalyser.getByteFrequencyData(d);
       const avg = d.reduce((a,b)=>a+b,0)/d.length;
-      document.getElementById('mic-bar').style.width = Math.min(100, avg * 2.5) + '%';
+      const pct = Math.min(100, avg * 2.5);
+      document.getElementById('mic-bar').style.width = pct + '%';
+      // Alerta de nivel
+      if (pct < 5) {
+        alert.textContent = '⚠️ Audio muy débil — sube el volumen'; alert.className = 'weak';
+      } else if (pct > 90) {
+        alert.textContent = '🔴 Audio saturado — baja el volumen'; alert.className = 'loud';
+      } else {
+        alert.textContent = ''; alert.className = '';
+      }
       requestAnimationFrame(tick);
     })();
   }
@@ -579,7 +662,7 @@
         );
         u.lang = translateLang;
         if (selectedVoice) u.voice = selectedVoice;
-        u.volume = 1.0; u.onend = res; u.onerror = () => rej();
+        u.rate = 1.1; u.volume = 1.0; u.onend = res; u.onerror = () => rej();
         window.speechSynthesis.cancel();
         setTimeout(() => window.speechSynthesis.speak(u), 100);
         setTimeout(() => rej(), 8000);
@@ -591,7 +674,7 @@
     }
   }
 
-  // ── IDIOMAS ──
+  // ══ IDIOMAS ══
   function selectLang(type, btn) {
     const group = document.getElementById(type+'-langs');
     group.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('selected'));
@@ -610,7 +693,7 @@
     populateVoiceSelect();
   }
 
-  // ── SESIÓN ──
+  // ══ SESIÓN ══
   function toggleSession() {
     if (sessionActive) stopSession(); else startSession();
   }
@@ -620,7 +703,9 @@
       showError('Usa Chrome para el reconocimiento de voz.'); return;
     }
     sessionActive = true;
-    listenConfirmed = ''; translateConfirmed = '';
+    listenConfirmed = ''; translateConfirmed = ''; translatePending = '';
+    pendingBuffer = ''; ttsQueue = []; ttsBusy = false;
+    clearTimeout(bufferTimer);
     renderListenPanel('');
     renderTranslatePanel();
     document.getElementById('start-btn').textContent = '⏹ Detener Traducción';
@@ -632,16 +717,23 @@
 
   function stopSession() {
     sessionActive = false;
+    clearTimeout(bufferTimer);
+    pendingBuffer = '';
     stopListening();
+    window.speechSynthesis.cancel();
+    ttsQueue = []; ttsBusy = false;
     releaseWakeLock();
     document.getElementById('start-btn').textContent = '🚀 Iniciar Traducción';
     document.getElementById('start-btn').classList.remove('active');
     document.getElementById('status-row').classList.remove('visible');
+    document.getElementById('speaking-indicator').classList.remove('visible');
   }
 
-  // ── RECONOCIMIENTO ──
+  // ══ RECONOCIMIENTO — micrófono SIEMPRE abierto ══
+  let restartTimer = null;
+
   function startListening() {
-    if (recognition) recognition.abort();
+    if (recognition) { try { recognition.abort(); } catch(e){} }
     clearTimeout(restartTimer);
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     recognition = new SR();
@@ -658,28 +750,48 @@
         const t = e.results[i][0].transcript;
         e.results[i].isFinal ? (final += t) : (interim += t);
       }
-      if (interim) renderListenPanel(interim);
+
+      // Panel ES: mostrar provisional en gris
+      if (interim) renderListenPanel(pendingBuffer ? pendingBuffer + ' ' + interim : interim);
+
       if (final) {
-        listenConfirmed += (listenConfirmed ? ' ' : '') + final.trim();
+        const trimmed = final.trim();
+        if (!trimmed) return;
+
+        // Acumular en el panel ES
+        pendingBuffer += (pendingBuffer ? ' ' : '') + trimmed;
+        listenConfirmed += (listenConfirmed ? ' ' : '') + trimmed;
         renderListenPanel('');
-        handleFinal(final.trim(), Date.now() - sttStart);
+
+        // Traducir en paralelo SIN parar el micrófono
+        lastSttMs = Date.now() - sttStart;
+        clearTimeout(bufferTimer);
+        bufferTimer = setTimeout(() => {
+          const toTranslate = pendingBuffer;
+          pendingBuffer = '';
+          if (toTranslate) translateAndQueue(toTranslate, lastSttMs);
+        }, BUFFER_DELAY);
       }
     };
 
     recognition.onerror = (e) => {
-      if (e.error === 'no-speech') { scheduleRestart(500); return; }
+      if (e.error === 'no-speech') { scheduleRestart(300); return; }
       if (e.error === 'aborted') return;
       showError('Error: ' + e.error);
-      scheduleRestart(2000);
+      scheduleRestart(1500);
     };
 
-    recognition.onend = () => { if (!isSpeaking && sessionActive) scheduleRestart(300); };
-    try { recognition.start(); } catch(e) { scheduleRestart(1000); }
+    // Reinicio inmediato — micrófono siempre activo
+    recognition.onend = () => {
+      if (sessionActive) scheduleRestart(100);
+    };
+
+    try { recognition.start(); } catch(e) { scheduleRestart(500); }
   }
 
   function stopListening() {
     clearTimeout(restartTimer);
-    if (recognition) { recognition.abort(); recognition = null; }
+    if (recognition) { try { recognition.abort(); } catch(e){} recognition = null; }
   }
 
   function scheduleRestart(ms) {
@@ -687,26 +799,43 @@
     restartTimer = setTimeout(() => { if (sessionActive) startListening(); }, ms);
   }
 
-  // ── PIPELINE ──
-  async function handleFinal(text, sttMs) {
-    if (!text) return;
-    isSpeaking = true; stopListening();
+  // ══ TRADUCCIÓN EN PARALELO (no para el micrófono) ══
+  async function translateAndQueue(text, sttMs) {
+    if (!text || !sessionActive) return;
+    setStatus('Traduciendo...');
+    const t0 = Date.now();
     try {
-      setStatus('Traduciendo...');
-      const t0 = Date.now();
-      const translated = await translate(text, listenLang, translateLang);
+      const withVocab = applyVocab(text, listenLang);
+      const translated = await translate(withVocab, listenLang, translateLang);
       const apiMs = Date.now() - t0;
+      totalApiMs += apiMs;
+
+      // Agregar al panel EN
       translateConfirmed += (translateConfirmed ? ' ' : '') + translated;
+      translatePending = '';
       renderTranslatePanel();
-      setStatus('Hablando...');
-      const t1 = Date.now();
-      await speak(translated, translateLang);
-      updateLatency(sttMs||0, apiMs, Date.now()-t1);
-    } catch(e) { showError('Error de traducción.'); }
-    isSpeaking = false;
-    sttStart = Date.now();
-    renderListenPanel('');
-    if (sessionActive) startListening();
+
+      // Encolar en TTS
+      ttsQueue.push({ text: translated, sttMs, apiMs });
+      processTtsQueue();
+      setStatus('Escuchando...');
+    } catch(e) {
+      showError('Error de traducción.');
+      setStatus('Escuchando...');
+    }
+  }
+
+  // ══ COLA DE VOZ — habla en orden, micrófono no se detiene ══
+  async function processTtsQueue() {
+    if (ttsBusy || !ttsQueue.length || !sessionActive) return;
+    ttsBusy = true;
+    const { text, sttMs, apiMs } = ttsQueue.shift();
+    const t1 = Date.now();
+    await speak(text, translateLang);
+    const ttsMs = Date.now() - t1;
+    updateLatency(sttMs, apiMs, ttsMs);
+    ttsBusy = false;
+    processTtsQueue(); // procesar siguiente si hay más
   }
 
   async function translate(text, from, to) {
@@ -718,19 +847,24 @@
 
   function speak(text, lang) {
     return new Promise(resolve => {
-      window.speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text);
-      u.lang = lang; u.rate = 1.0; u.volume = 1.0;
+      u.lang = lang;
+      u.rate = 1.1;   // un poco más rápido que lo normal
+      u.pitch = 1.0;
+      u.volume = 1.0;
       if (selectedVoice) u.voice = selectedVoice;
       const ind = document.getElementById('speaking-indicator');
       ind.classList.add('visible');
-      u.onend = () => { ind.classList.remove('visible'); resolve(); };
+      u.onend = () => {
+        if (!ttsQueue.length) ind.classList.remove('visible');
+        resolve();
+      };
       u.onerror = () => { ind.classList.remove('visible'); resolve(); };
-      setTimeout(() => window.speechSynthesis.speak(u), 100);
+      window.speechSynthesis.speak(u);
     });
   }
 
-  // ── RENDER PANELES ──
+  // ══ RENDER PANELES ══
   function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
   function renderListenPanel(interim) {
@@ -743,24 +877,24 @@
 
   function renderTranslatePanel() {
     const el = document.getElementById('translate-text');
-    el.innerHTML = translateConfirmed
-      ? `<span class="confirmed">${esc(translateConfirmed)}</span>`
-      : '<span class="placeholder">La traducción aparecerá aquí...</span>';
+    const c = translateConfirmed ? `<span class="confirmed">${esc(translateConfirmed)}</span>` : '';
+    const p = translatePending ? ` <span class="tr-pending">${esc(translatePending)}</span>` : '';
+    el.innerHTML = (c || p) ? c + p : '<span class="placeholder">La traducción aparecerá aquí...</span>';
     el.scrollTop = el.scrollHeight;
   }
 
-  // ── UTILS ──
+  // ══ UTILS ══
   function setStatus(t) { document.getElementById('status-text').textContent = t; }
 
   function updateLatency(stt, api, tts) {
-    const total = stt+api+tts;
+    const total = stt + api + tts;
     document.getElementById('latency-bar').classList.add('visible');
-    const cls = ms => ms<800?'fast':ms<2000?'medium':'slow';
-    const fmt = ms => ms<1000?ms+'ms':(ms/1000).toFixed(1)+'s';
+    const cls = ms => ms < 800 ? 'fast' : ms < 2000 ? 'medium' : 'slow';
+    const fmt = ms => ms < 1000 ? ms + 'ms' : (ms/1000).toFixed(1) + 's';
     [['stt',stt],['api',api],['tts',tts],['total',total]].forEach(([k,v]) => {
       const el = document.getElementById('lat-'+k);
       el.textContent = fmt(v);
-      el.className = 'lat-value '+cls(v);
+      el.className = 'lat-value ' + cls(v);
     });
   }
 
