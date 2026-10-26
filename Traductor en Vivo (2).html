@@ -663,26 +663,24 @@
       audioChunks = [];
       mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
       mediaRecorder.onstop = async () => {
-        setStatus('Enviando...');
         if (!sessionActive || isSpeaking) return;
         const blob = new Blob(audioChunks, { type: currentMimeType });
         audioChunks = [];
-        const base64 = await blobToBase64(blob);
-        await sendToGoogleSTT(base64);
+        // Iniciar el siguiente ciclo inmediatamente mientras procesamos este
         if (sessionActive && !isSpeaking && useGoogleSTT) {
           startGoogleSTT();
         }
+        // Procesar el audio grabado en paralelo
+        const base64 = await blobToBase64(blob);
+        await sendToGoogleSTT(base64);
       };
       mediaRecorder.start();
-      setStatus('Grabando 5s...');
+      setStatus('Escuchando...');
       gRecordTimer = setTimeout(() => {
-        setStatus('Parando grabacion...');
         if (mediaRecorder && mediaRecorder.state === 'recording') {
           mediaRecorder.stop();
-        } else {
-          setStatus('Estado:' + (mediaRecorder ? mediaRecorder.state : 'null'));
         }
-      }, 5000);
+      }, 3000);  // 3 segundos para más rapidez
     } catch(err) {
       showError('Error de micrófono: ' + err.message);
     }
