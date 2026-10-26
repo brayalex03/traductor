@@ -141,7 +141,7 @@
     background: var(--border);
     border-radius: 100px;
     overflow: hidden;
-    display: none;
+    display: block;
   }
   #mic-bar {
     height: 100%;
@@ -600,8 +600,7 @@
 
   function startMicMeter() {
     if (!micStream) return;
-    const wrap = document.getElementById('mic-level-wrap');
-    wrap.style.display = 'block';
+    // mic-level-wrap ya está siempre visible desde el CSS
     micCtx = new (window.AudioContext || window.webkitAudioContext)();
     const src = micCtx.createMediaStreamSource(micStream);
     micAnalyser = micCtx.createAnalyser(); micAnalyser.fftSize = 256;
