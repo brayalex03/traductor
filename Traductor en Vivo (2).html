@@ -438,6 +438,14 @@
 
 <script>
   const STT_PROXY_URL = 'https://traductor-eight-puce.vercel.app/api/stt';
+  const TTS_PROXY_URL = 'https://traductor-eight-puce.vercel.app/api/tts';
+
+  // Voces Google TTS por idioma
+  const GOOGLE_VOICES = {
+    'en-US': 'en-US-Journey-F',   // inglés natural femenino
+    'es-US': 'es-US-Journey-F',   // español natural femenino
+    'es-ES': 'es-ES-Journey-F',
+  };
 
   let listenLang = 'es-US';
   let translateLang = 'en-US';
@@ -826,14 +834,35 @@
     throw new Error('fail');
   }
 
-  function speak(text, lang) {
+  async function speak(text, lang) {
+    const ind = document.getElementById('speaking-indicator');
+    ind.classList.add('visible');
+    try {
+      // Intentar Google TTS primero
+      const voiceName = GOOGLE_VOICES[lang] || 'en-US-Journey-F';
+      const r = await fetch(TTS_PROXY_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, languageCode: lang, voiceName })
+      });
+      const data = await r.json();
+      if (data.audioContent) {
+        await new Promise(resolve => {
+          const audio = new Audio('data:audio/mp3;base64,' + data.audioContent);
+          audio.onended = resolve;
+          audio.onerror = resolve;
+          audio.play().catch(resolve);
+        });
+        ind.classList.remove('visible');
+        return;
+      }
+    } catch(e) { /* fallback al browser */ }
+    // Fallback: voz del browser
     return new Promise(resolve => {
       window.speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text);
       u.lang = lang; u.rate = 1.0; u.volume = 1.0;
       if (selectedVoice) u.voice = selectedVoice;
-      const ind = document.getElementById('speaking-indicator');
-      ind.classList.add('visible');
       u.onend = () => { ind.classList.remove('visible'); resolve(); };
       u.onerror = () => { ind.classList.remove('visible'); resolve(); };
       setTimeout(() => window.speechSynthesis.speak(u), 100);
