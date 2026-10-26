@@ -507,6 +507,20 @@
   let bufferTimer = null;
   const BUFFER_DELAY = 800;  // ms de silencio antes de traducir
 
+  // Anti-repetición global: hash de los últimos 20 fragmentos finales ya procesados
+  const processedFinals = new Set();
+  const processedFinalsList = [];  // para limitar el set a 20 entradas
+  function markProcessed(text) {
+    const key = text.trim().toLowerCase();
+    if (processedFinals.has(key)) return false;
+    processedFinals.add(key);
+    processedFinalsList.push(key);
+    if (processedFinalsList.length > 20) {
+      processedFinals.delete(processedFinalsList.shift());
+    }
+    return true;
+  }
+
   // Cola de voz (TTS): micrófono siempre abierto
   let ttsQueue = [];
   let ttsBusy = false;
@@ -719,6 +733,7 @@
     sessionActive = true;
     listenConfirmed = ''; translateConfirmed = ''; translatePending = '';
     pendingBuffer = ''; ttsQueue = []; ttsBusy = false;
+    processedFinals.clear(); processedFinalsList.length = 0;
     clearTimeout(bufferTimer);
     renderListenPanel('');
     renderTranslatePanel();
@@ -756,18 +771,15 @@
     recognition.interimResults = true;
     recognition.maxAlternatives = 1;
 
-    // lastFinalIdx: índice del último resultado final ya procesado en esta sesión
-    let lastFinalIdx = -1;
-
-    recognition.onstart = () => { hideError(); sttStart = Date.now(); lastFinalIdx = -1; setStatus('Escuchando...'); };
+    recognition.onstart = () => { hideError(); sttStart = Date.now(); setStatus('Escuchando...'); };
 
     recognition.onresult = (e) => {
       let interim = '', final = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const t = e.results[i][0].transcript;
         if (e.results[i].isFinal) {
-          // Solo procesar si este índice aún no fue procesado
-          if (i > lastFinalIdx) { lastFinalIdx = i; final += t; }
+          // markProcessed evita duplicados aunque Android reenvíe el mismo fragmento
+          if (markProcessed(t)) final += t;
         } else {
           interim += t;
         }
