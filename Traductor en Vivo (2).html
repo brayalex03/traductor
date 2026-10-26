@@ -507,7 +507,6 @@
   let bufferTimer = null;
   const BUFFER_DELAY = 800;  // ms de silencio antes de traducir
 
-
   // Cola de voz (TTS): micrófono siempre abierto
   let ttsQueue = [];
   let ttsBusy = false;
@@ -679,7 +678,7 @@
         if (selectedVoice) u.voice = selectedVoice;
         u.rate = 1.1; u.volume = 1.0; u.onend = res; u.onerror = () => rej();
         window.speechSynthesis.cancel();
-        setTimeout(() => window.speechSynthesis.speak(u), 300);
+        setTimeout(() => window.speechSynthesis.speak(u), 100);
         setTimeout(() => rej(), 8000);
       });
       btn.textContent = '✅ OK'; btn.classList.add('success');
@@ -720,7 +719,6 @@
     sessionActive = true;
     listenConfirmed = ''; translateConfirmed = ''; translatePending = '';
     pendingBuffer = ''; ttsQueue = []; ttsBusy = false;
-    globalResultIdx = -1;
     clearTimeout(bufferTimer);
     renderListenPanel('');
     renderTranslatePanel();
@@ -745,14 +743,11 @@
     document.getElementById('speaking-indicator').classList.remove('visible');
   }
 
-  // ══ RECONOCIMIENTO ══
+  // ══ RECONOCIMIENTO — micrófono SIEMPRE abierto ══
   let restartTimer = null;
-  // globalResultIdx: índice absoluto del último resultado final procesado,
-  // persiste entre reinicios para que Android nunca reprocese nada
-  let globalResultIdx = -1;
 
   function startListening() {
-    if (recognition) { try { recognition.abort(); } catch(e){} recognition = null; }
+    if (recognition) { try { recognition.abort(); } catch(e){} }
     clearTimeout(restartTimer);
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     recognition = new SR();
@@ -761,41 +756,28 @@
     recognition.interimResults = true;
     recognition.maxAlternatives = 1;
 
-    // Índice local de esta instancia de recognition (empieza en 0 cada vez)
-    // Lo comparamos con globalResultIdx para saber qué ya procesamos
-    let localOffset = 0; // cuántos finales procesamos antes de este reinicio
-
-    recognition.onstart = () => {
-      hideError();
-      sttStart = Date.now();
-      localOffset = globalResultIdx + 1; // los índices 0..globalResultIdx ya fueron procesados
-      setStatus('Escuchando...');
-    };
+    recognition.onstart = () => { hideError(); sttStart = Date.now(); setStatus('Escuchando...'); };
 
     recognition.onresult = (e) => {
       let interim = '', final = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const t = e.results[i][0].transcript;
-        if (e.results[i].isFinal) {
-          const absIdx = localOffset + i;
-          if (absIdx > globalResultIdx) {
-            globalResultIdx = absIdx;
-            final += t;
-          }
-          // Si absIdx <= globalResultIdx: ya procesado en reinicio anterior, ignorar
-        } else {
-          interim += t;
-        }
+        e.results[i].isFinal ? (final += t) : (interim += t);
       }
 
+      // Panel ES: mostrar provisional en gris
       if (interim) renderListenPanel(pendingBuffer ? pendingBuffer + ' ' + interim : interim);
 
       if (final) {
         const trimmed = final.trim();
         if (!trimmed) return;
+
+        // Acumular en el panel ES
         pendingBuffer += (pendingBuffer ? ' ' : '') + trimmed;
         listenConfirmed += (listenConfirmed ? ' ' : '') + trimmed;
         renderListenPanel('');
+
+        // Traducir en paralelo SIN parar el micrófono
         lastSttMs = Date.now() - sttStart;
         clearTimeout(bufferTimer);
         bufferTimer = setTimeout(() => {
@@ -807,16 +789,15 @@
     };
 
     recognition.onerror = (e) => {
-      if (e.error === 'no-speech') { scheduleRestart(500); return; }
-      if (e.error === 'aborted')   { return; }
-      showError('Error STT: ' + e.error);
-      scheduleRestart(2000);
+      if (e.error === 'no-speech') { scheduleRestart(300); return; }
+      if (e.error === 'aborted') return;
+      showError('Error: ' + e.error);
+      scheduleRestart(1500);
     };
 
+    // Reinicio inmediato — micrófono siempre activo
     recognition.onend = () => {
-      // Con continuous=true esto solo pasa por error o por el sistema
-      // Reiniciamos solo si la sesión sigue activa
-      if (sessionActive) scheduleRestart(300);
+      if (sessionActive) scheduleRestart(100);
     };
 
     try { recognition.start(); } catch(e) { scheduleRestart(500); }
@@ -895,9 +876,8 @@
         resolve();
       };
       u.onerror = () => { ind.classList.remove('visible'); resolve(); };
-      // cancel() + 300ms evita el click/tic-tac del sistema en Android
-      window.speechSynthesis.cancel();
-      setTimeout(() => window.speechSynthesis.speak(u), 300);
+      // setTimeout 150ms evita el click/tic-tac del sistema en Android
+      setTimeout(() => window.speechSynthesis.speak(u), 150);
     });
   }
 
