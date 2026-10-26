@@ -745,8 +745,6 @@
 
   // ══ RECONOCIMIENTO — micrófono SIEMPRE abierto ══
   let restartTimer = null;
-  let globalResultIdx = 0;  // índice absoluto de finales procesados — persiste entre reinicios
-  let localOffset = 0;      // cuántos finales había antes de esta instancia
 
   function startListening() {
     if (recognition) { try { recognition.abort(); } catch(e){} }
@@ -758,23 +756,13 @@
     recognition.interimResults = true;
     recognition.maxAlternatives = 1;
 
-    recognition.onstart = () => {
-      localOffset = globalResultIdx; // marcar cuántos ya procesamos antes de este reinicio
-      hideError(); sttStart = Date.now(); setStatus('Escuchando...');
-    };
+    recognition.onstart = () => { hideError(); sttStart = Date.now(); setStatus('Escuchando...'); };
 
     recognition.onresult = (e) => {
       let interim = '', final = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
-        // Saltar resultados finales que ya procesamos en una instancia anterior
-        if (e.results[i].isFinal && (localOffset + i) < globalResultIdx) continue;
         const t = e.results[i][0].transcript;
-        if (e.results[i].isFinal) {
-          final += t;
-          globalResultIdx++;  // avanzar índice global solo para finales
-        } else {
-          interim += t;
-        }
+        e.results[i].isFinal ? (final += t) : (interim += t);
       }
 
       // Panel ES: mostrar provisional en gris
@@ -818,8 +806,6 @@
   function stopListening() {
     clearTimeout(restartTimer);
     if (recognition) { try { recognition.abort(); } catch(e){} recognition = null; }
-    globalResultIdx = 0;  // resetear al desconectar para próxima sesión
-    localOffset = 0;
   }
 
   function scheduleRestart(ms) {
