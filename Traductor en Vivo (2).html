@@ -437,7 +437,7 @@
 </div>
 
 <script>
-  const GOOGLE_STT_KEY = 'AIzaSyAPrWAq50_7VAva04gTUxqKWDlCuKPuJFg';
+  const STT_PROXY_URL = 'https://traductor-brayalex03.vercel.app/api/stt';
 
   let listenLang = 'es-US';
   let translateLang = 'en-US';
@@ -697,18 +697,8 @@
     try {
       setStatus('Procesando...');
       const langCode = listenLang.split('-')[0] === 'es' ? 'es-US' : 'en-US';
-      const body = {
-        config: {
-          encoding: 'WEBM_OPUS',
-          sampleRateHertz: 48000,
-          languageCode: langCode,
-          enableAutomaticPunctuation: true,
-        },
-        audio: { content: base64Audio }
-      };
-      const r = await fetch(
-        `https://speech.googleapis.com/v1/speech:recognize?key=${GOOGLE_STT_KEY}`,
-        { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) }
+      const r = await fetch(STT_PROXY_URL,
+        { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ audio: base64Audio, languageCode: langCode }) }
       );
       const d = await r.json();
       if (d.results && d.results.length > 0) {
