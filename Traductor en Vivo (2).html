@@ -752,17 +752,25 @@
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     recognition = new SR();
     recognition.lang = listenLang;
-    recognition.continuous = false;
+    recognition.continuous = true;
     recognition.interimResults = true;
     recognition.maxAlternatives = 1;
 
-    recognition.onstart = () => { hideError(); sttStart = Date.now(); setStatus('Escuchando...'); };
+    // lastFinalIdx: índice del último resultado final ya procesado en esta sesión
+    let lastFinalIdx = -1;
+
+    recognition.onstart = () => { hideError(); sttStart = Date.now(); lastFinalIdx = -1; setStatus('Escuchando...'); };
 
     recognition.onresult = (e) => {
       let interim = '', final = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const t = e.results[i][0].transcript;
-        e.results[i].isFinal ? (final += t) : (interim += t);
+        if (e.results[i].isFinal) {
+          // Solo procesar si este índice aún no fue procesado
+          if (i > lastFinalIdx) { lastFinalIdx = i; final += t; }
+        } else {
+          interim += t;
+        }
       }
 
       // Panel ES: mostrar provisional en gris
@@ -771,10 +779,6 @@
       if (final) {
         const trimmed = final.trim();
         if (!trimmed) return;
-
-        // Anti-repetición: ignorar si es igual al último fragmento confirmado
-        const lastWords = listenConfirmed.slice(-trimmed.length).trim();
-        if (lastWords === trimmed) return;
 
         // Acumular en el panel ES
         pendingBuffer += (pendingBuffer ? ' ' : '') + trimmed;
