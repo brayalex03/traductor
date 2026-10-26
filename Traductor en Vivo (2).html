@@ -709,6 +709,8 @@
         { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ audio: base64Audio, languageCode: langCode, mimeType: currentMimeType }) }
       );
       const d = await r.json();
+      // Mostrar respuesta completa para diagnóstico
+      if (d.error) { showError('Google error: ' + JSON.stringify(d.error).substring(0,100)); return; }
       if (d.results && d.results.length > 0) {
         const text = d.results.map(r => r.alternatives[0].transcript).join(' ').trim();
         if (text) {
@@ -717,7 +719,7 @@
           await handleFinal(text, Date.now() - sttStart);
         }
       } else {
-        setStatus('Escuchando...');
+        setStatus('Sin texto (mime:' + currentMimeType.substring(0,10) + ')');
       }
     } catch(err) {
       // Si el proxy falla (red, CORS, URL incorrecta), volver a Web Speech si está disponible
