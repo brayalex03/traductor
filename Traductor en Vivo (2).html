@@ -507,19 +507,6 @@
   let bufferTimer = null;
   const BUFFER_DELAY = 800;  // ms de silencio antes de traducir
 
-  // Anti-repetición global: hash de los últimos 20 fragmentos finales ya procesados
-  const processedFinals = new Set();
-  const processedFinalsList = [];  // para limitar el set a 20 entradas
-  function markProcessed(text) {
-    const key = text.trim().toLowerCase();
-    if (processedFinals.has(key)) return false;
-    processedFinals.add(key);
-    processedFinalsList.push(key);
-    if (processedFinalsList.length > 20) {
-      processedFinals.delete(processedFinalsList.shift());
-    }
-    return true;
-  }
 
   // Cola de voz (TTS): micrófono siempre abierto
   let ttsQueue = [];
@@ -733,7 +720,7 @@
     sessionActive = true;
     listenConfirmed = ''; translateConfirmed = ''; translatePending = '';
     pendingBuffer = ''; ttsQueue = []; ttsBusy = false;
-    processedFinals.clear(); processedFinalsList.length = 0;
+    globalResultIdx = -1;
     clearTimeout(bufferTimer);
     renderListenPanel('');
     renderTranslatePanel();
@@ -758,11 +745,14 @@
     document.getElementById('speaking-indicator').classList.remove('visible');
   }
 
-  // ══ RECONOCIMIENTO — micrófono SIEMPRE abierto ══
+  // ══ RECONOCIMIENTO ══
   let restartTimer = null;
+  // globalResultIdx: índice absoluto del último resultado final procesado,
+  // persiste entre reinicios para que Android nunca reprocese nada
+  let globalResultIdx = -1;
 
   function startListening() {
-    if (recognition) { try { recognition.abort(); } catch(e){} }
+    if (recognition) { try { recognition.abort(); } catch(e){} recognition = null; }
     clearTimeout(restartTimer);
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     recognition = new SR();
@@ -771,33 +761,41 @@
     recognition.interimResults = true;
     recognition.maxAlternatives = 1;
 
-    recognition.onstart = () => { hideError(); sttStart = Date.now(); setStatus('Escuchando...'); };
+    // Índice local de esta instancia de recognition (empieza en 0 cada vez)
+    // Lo comparamos con globalResultIdx para saber qué ya procesamos
+    let localOffset = 0; // cuántos finales procesamos antes de este reinicio
+
+    recognition.onstart = () => {
+      hideError();
+      sttStart = Date.now();
+      localOffset = globalResultIdx + 1; // los índices 0..globalResultIdx ya fueron procesados
+      setStatus('Escuchando...');
+    };
 
     recognition.onresult = (e) => {
       let interim = '', final = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const t = e.results[i][0].transcript;
         if (e.results[i].isFinal) {
-          // markProcessed evita duplicados aunque Android reenvíe el mismo fragmento
-          if (markProcessed(t)) final += t;
+          const absIdx = localOffset + i;
+          if (absIdx > globalResultIdx) {
+            globalResultIdx = absIdx;
+            final += t;
+          }
+          // Si absIdx <= globalResultIdx: ya procesado en reinicio anterior, ignorar
         } else {
           interim += t;
         }
       }
 
-      // Panel ES: mostrar provisional en gris
       if (interim) renderListenPanel(pendingBuffer ? pendingBuffer + ' ' + interim : interim);
 
       if (final) {
         const trimmed = final.trim();
         if (!trimmed) return;
-
-        // Acumular en el panel ES
         pendingBuffer += (pendingBuffer ? ' ' : '') + trimmed;
         listenConfirmed += (listenConfirmed ? ' ' : '') + trimmed;
         renderListenPanel('');
-
-        // Traducir en paralelo SIN parar el micrófono
         lastSttMs = Date.now() - sttStart;
         clearTimeout(bufferTimer);
         bufferTimer = setTimeout(() => {
@@ -809,16 +807,16 @@
     };
 
     recognition.onerror = (e) => {
-      if (e.error === 'no-speech') { scheduleRestart(300); return; }
-      if (e.error === 'aborted') return;
-      // Mostrar error detallado para diagnóstico
-      showError('Error STT: ' + e.error + (e.message ? ' — ' + e.message : ''));
-      scheduleRestart(1500);
+      if (e.error === 'no-speech') { scheduleRestart(500); return; }
+      if (e.error === 'aborted')   { return; }
+      showError('Error STT: ' + e.error);
+      scheduleRestart(2000);
     };
 
-    // Reinicio inmediato — micrófono siempre activo
     recognition.onend = () => {
-      if (sessionActive) scheduleRestart(100);
+      // Con continuous=true esto solo pasa por error o por el sistema
+      // Reiniciamos solo si la sesión sigue activa
+      if (sessionActive) scheduleRestart(300);
     };
 
     try { recognition.start(); } catch(e) { scheduleRestart(500); }
