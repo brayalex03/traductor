@@ -752,7 +752,7 @@
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     recognition = new SR();
     recognition.lang = listenLang;
-    recognition.continuous = true;
+    recognition.continuous = false;
     recognition.interimResults = true;
     recognition.maxAlternatives = 1;
 
@@ -771,6 +771,10 @@
       if (final) {
         const trimmed = final.trim();
         if (!trimmed) return;
+
+        // Anti-repetición: ignorar si es igual al último fragmento confirmado
+        const lastWords = listenConfirmed.slice(-trimmed.length).trim();
+        if (lastWords === trimmed) return;
 
         // Acumular en el panel ES
         pendingBuffer += (pendingBuffer ? ' ' : '') + trimmed;
