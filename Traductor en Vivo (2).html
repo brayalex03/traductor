@@ -462,7 +462,6 @@
   // WebSocket hacia Render
   let ws = null;
   let wsReady = false;
-  let wsProcessing = false;  // bloquea envíos duplicados mientras el servidor procesa
 
   function connectWS() {
     try {
@@ -496,7 +495,6 @@
         } else {
           // Cola vacía → reactivar micrófono
           isSpeaking = false;
-          wsProcessing = false;
           sttStart = Date.now();
           renderListenPanel('');
           if (sessionActive) startListening();
@@ -524,7 +522,6 @@
           playNextTTS();
         }
         if (msg.type === 'error') {
-          wsProcessing = false;
           isSpeaking = false;
           showError('Servidor: ' + msg.message);
           if (sessionActive) startListening();
@@ -855,11 +852,10 @@
   }
 
   async function sendToGoogleSTT(base64Audio) {
-    if (!sessionActive || isSpeaking || wsProcessing) return;
+    if (!sessionActive || isSpeaking) return;
 
     // ── Ruta rápida: WebSocket a Render ──
     if (wsReady && ws && ws.readyState === WebSocket.OPEN) {
-      wsProcessing = true;
       setStatus('⚡ Procesando (WebSocket)...');
       ws.send(JSON.stringify({ type: 'audio', audio: base64Audio, mimeType: currentMimeType }));
       return;  // El resultado llega por ws.onmessage
@@ -958,12 +954,10 @@
   // ── PIPELINE ──
   async function handleFinal(text, sttMs) {
     if (!text) return;
-    if (wsProcessing) return;  // ya hay un request en vuelo, ignorar este
     isSpeaking = true; stopListening();
 
     // Si el WebSocket está listo, enviar audio por ahí (STT+traducción+TTS en Render)
     if (wsReady && ws && ws.readyState === WebSocket.OPEN) {
-      wsProcessing = true;
       setStatus('⚡ Procesando (WebSocket)...');
       ws.send(JSON.stringify({ type: 'text', text, mimeType: currentMimeType }));
       // El resultado llega por ws.onmessage (transcript + translation + tts)
