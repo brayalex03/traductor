@@ -721,12 +721,20 @@
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       // Detectar formato soportado (Android puede no soportar webm)
-      currentMimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : MediaRecorder.isTypeSupported('audio/webm')
-          ? 'audio/webm'
-          : 'audio/ogg;codecs=opus';
-      mediaRecorder = new MediaRecorder(stream, { mimeType: currentMimeType });
+      // Detectar formato soportado (iOS/Android usan mp4, desktop usa webm)
+      if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        currentMimeType = 'audio/webm;codecs=opus';
+      } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+        currentMimeType = 'audio/webm';
+      } else if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
+        currentMimeType = 'audio/ogg;codecs=opus';
+      } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+        currentMimeType = 'audio/mp4';
+      } else {
+        currentMimeType = ''; // dejar que el browser elija
+      }
+      mediaRecorder = new MediaRecorder(stream, currentMimeType ? { mimeType: currentMimeType } : {});
+      currentMimeType = mediaRecorder.mimeType; // obtener el tipo real que usó
       audioChunks = [];
       mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
       mediaRecorder.onstop = async () => {

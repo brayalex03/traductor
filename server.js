@@ -44,7 +44,13 @@ wss.on('connection', (ws, req) => {
 
         // 1. Transcribir con Google STT
         let encoding = 'WEBM_OPUS';
-        if (mimeType && mimeType.includes('ogg')) encoding = 'OGG_OPUS';
+        let sampleRate = 48000;
+        if (mimeType && mimeType.includes('ogg')) {
+          encoding = 'OGG_OPUS';
+        } else if (mimeType && (mimeType.includes('mp4') || mimeType.includes('aac') || mimeType.includes('m4a'))) {
+          encoding = 'MP3'; // Google STT acepta MP3 para audio/mp4 de móviles
+          sampleRate = 44100;
+        }
 
         const sttRes = await fetch(
           `https://speech.googleapis.com/v1/speech:recognize?key=${GOOGLE_KEY}`,
@@ -54,7 +60,7 @@ wss.on('connection', (ws, req) => {
             body: JSON.stringify({
               config: {
                 encoding,
-                sampleRateHertz: 48000,
+                sampleRateHertz: sampleRate,
                 languageCode: genSession.fromLang,
                 enableAutomaticPunctuation: true,
               },
