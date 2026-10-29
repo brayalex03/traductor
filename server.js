@@ -57,13 +57,13 @@ wss.on('connection', (ws, req) => {
         if (!translated) return;
         ws.send(JSON.stringify({ type: 'translation', text: translated }));
 
-        // TTS con Google
+        // TTS con Google (v1beta1 para voces Journey naturales)
         const voiceMap = { 'en-US': 'en-US-Journey-F', 'es-US': 'es-US-Journey-F', 'es-ES': 'es-ES-Journey-F' };
         const voiceName = voiceMap[genSession.toLang] || 'en-US-Journey-F';
-        const ttsRes = await fetch(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${process.env.GOOGLE_API_KEY}`, {
+        const ttsRes = await fetch(`https://texttospeech.googleapis.com/v1beta1/text:synthesize?key=${process.env.GOOGLE_API_KEY}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ input: { text: translated }, voice: { languageCode: genSession.toLang, name: voiceName }, audioConfig: { audioEncoding: 'MP3', speakingRate: 1.0 } })
+          body: JSON.stringify({ input: { text: translated }, voice: { languageCode: genSession.toLang, name: voiceName }, audioConfig: { audioEncoding: 'MP3', speakingRate: 0.95, pitch: 0.0 } })
         });
         const ttsData = await ttsRes.json();
         if (ttsData.audioContent) ws.send(JSON.stringify({ type: 'tts', audio: ttsData.audioContent }));
@@ -140,7 +140,7 @@ wss.on('connection', (ws, req) => {
         console.log(`Traducción: ${translated}`);
         ws.send(JSON.stringify({ type: 'translation', text: translated }));
 
-        // 3. Convertir a voz con Google TTS
+        // 3. Convertir a voz con Google TTS (v1beta1 para voces Journey naturales)
         const voiceMap = {
           'en-US': 'en-US-Journey-F',
           'es-US': 'es-US-Journey-F',
@@ -149,14 +149,14 @@ wss.on('connection', (ws, req) => {
         const voiceName = voiceMap[genSession.toLang] || 'en-US-Journey-F';
 
         const ttsRes = await fetch(
-          `https://texttospeech.googleapis.com/v1/text:synthesize?key=${GOOGLE_KEY}`,
+          `https://texttospeech.googleapis.com/v1beta1/text:synthesize?key=${GOOGLE_KEY}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               input: { text: translated },
               voice: { languageCode: genSession.toLang, name: voiceName },
-              audioConfig: { audioEncoding: 'MP3', speakingRate: 1.0 }
+              audioConfig: { audioEncoding: 'MP3', speakingRate: 0.95, pitch: 0.0 }
             })
           }
         );
