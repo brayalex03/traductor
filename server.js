@@ -83,24 +83,26 @@ wss.on('connection', (ws, req) => {
         console.log(`Transcripción: ${transcript}`);
         ws.send(JSON.stringify({ type: 'transcript', text: transcript }));
 
-        // 2. Traducir con Gemini Flash (rápido)
-        const geminiRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${GEMINI_KEY}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: `Translate this ${genSession.fromName} text to ${genSession.toName}. Return ONLY the translation, nothing else:\n\n${transcript}` }] }]
-            })
-          }
-        );
-        const geminiData = await geminiRes.json();
-        if (geminiData.error) {
-          console.error('Gemini error:', JSON.stringify(geminiData.error));
-          ws.send(JSON.stringify({ type: 'error', message: `Gemini: ${geminiData.error.message}` }));
+        // 2. Traducir con DeepL
+        const targetLang = genSession.toLang.startsWith('es') ? 'ES' : 'EN-US';
+        const deeplRes = await fetch('https://api-free.deepl.com/v2/translate', {
+          method: 'POST',
+          headers: {
+            'Authorization': `DeepL-Auth-Key ${process.env.DEEPL_API_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            text: [transcript],
+            target_lang: targetLang
+          })
+        });
+        const deeplData = await deeplRes.json();
+        if (deeplData.message) {
+          console.error('DeepL error:', JSON.stringify(deeplData));
+          ws.send(JSON.stringify({ type: 'error', message: `DeepL: ${deeplData.message}` }));
           return;
         }
-        const translated = geminiData.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+        const translated = deeplData.translations?.[0]?.text?.trim();
         if (!translated) return;
 
         console.log(`Traducción: ${translated}`);
