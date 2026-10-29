@@ -763,14 +763,11 @@
       audioChunks = [];
       mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
       mediaRecorder.onstop = async () => {
-        if (!sessionActive || isSpeaking) return;
+        if (!sessionActive) return;
         const blob = new Blob(audioChunks, { type: currentMimeType });
         audioChunks = [];
-        // Iniciar el siguiente ciclo inmediatamente mientras procesamos este
-        if (sessionActive && !isSpeaking && useGoogleSTT) {
-          startGoogleSTT();
-        }
-        // Procesar el audio grabado en paralelo
+        // NO arrancar nuevo ciclo aquí — esperar a que el TTS termine
+        // startListening() se llama desde playNextTTS cuando la cola queda vacía
         const base64 = await blobToBase64(blob);
         await sendToGoogleSTT(base64);
       };
