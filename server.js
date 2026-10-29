@@ -4,6 +4,7 @@ import { GoogleGenAI } from '@google/genai';
 
 const PORT = process.env.PORT || 3000;
 const GEMINI_KEY = process.env.GEMINI_API_KEY;
+const GOOGLE_KEY = process.env.GOOGLE_API_KEY;
 
 const httpServer = createServer((req, res) => {
   if (req.url === '/health') {
@@ -46,7 +47,7 @@ wss.on('connection', (ws, req) => {
         if (mimeType && mimeType.includes('ogg')) encoding = 'OGG_OPUS';
 
         const sttRes = await fetch(
-          `https://speech.googleapis.com/v1/speech:recognize?key=${GEMINI_KEY}`,
+          `https://speech.googleapis.com/v1/speech:recognize?key=${GOOGLE_KEY}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -90,7 +91,7 @@ wss.on('connection', (ws, req) => {
         const voiceName = voiceMap[genSession.toLang] || 'en-US-Journey-F';
 
         const ttsRes = await fetch(
-          `https://texttospeech.googleapis.com/v1/text:synthesize?key=${GEMINI_KEY}`,
+          `https://texttospeech.googleapis.com/v1/text:synthesize?key=${GOOGLE_KEY}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
