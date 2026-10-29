@@ -84,12 +84,23 @@ wss.on('connection', (ws, req) => {
         ws.send(JSON.stringify({ type: 'transcript', text: transcript }));
 
         // 2. Traducir con Gemini Flash (rápido)
-        const ai = new GoogleGenAI({ apiKey: GEMINI_KEY });
-        const result = await ai.models.generateContent({
-          model: 'gemini-1.5-flash',
-          contents: `Translate this ${genSession.fromName} text to ${genSession.toName}. Return ONLY the translation, nothing else:\n\n${transcript}`
-        });
-        const translated = result.text?.trim();
+        const geminiRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: `Translate this ${genSession.fromName} text to ${genSession.toName}. Return ONLY the translation, nothing else:\n\n${transcript}` }] }]
+            })
+          }
+        );
+        const geminiData = await geminiRes.json();
+        if (geminiData.error) {
+          console.error('Gemini error:', JSON.stringify(geminiData.error));
+          ws.send(JSON.stringify({ type: 'error', message: `Gemini: ${geminiData.error.message}` }));
+          return;
+        }
+        const translated = geminiData.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
         if (!translated) return;
 
         console.log(`Traducción: ${translated}`);
