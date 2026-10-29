@@ -86,7 +86,7 @@ wss.on('connection', (ws, req) => {
         // 2. Traducir con Gemini Flash (rápido)
         const ai = new GoogleGenAI({ apiKey: GEMINI_KEY });
         const result = await ai.models.generateContent({
-          model: 'gemini-2.0-flash',
+          model: 'gemini-2.5-flash',
           contents: `Translate this ${genSession.fromName} text to ${genSession.toName}. Return ONLY the translation, nothing else:\n\n${transcript}`
         });
         const translated = result.text?.trim();
