@@ -749,13 +749,66 @@
         const base64 = await blobToBase64(blob);
         await sendToGoogleSTT(base64);
       };
+      // Detección de silencio con AnalyserNode
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 512;
+      source.connect(analyser);
+      const freqData = new Uint8Array(analyser.frequencyBinCount);
+
+      let hasSpeech = false;
+      let silenceStart = null;
+      const SILENCE_THRESHOLD = 8;    // nivel mínimo de audio para considerar "habla"
+      const SILENCE_DURATION = 700;   // ms de silencio antes de cortar
+      const MAX_DURATION = 5000;      // máximo 5 segundos de grabación
+      const MIN_DURATION = 400;       // mínimo 400ms antes de poder cortar
+
       mediaRecorder.start();
       setStatus('Escuchando...');
+      const recordStart = Date.now();
+
+      function checkSilence() {
+        if (!mediaRecorder || mediaRecorder.state !== 'recording') return;
+        analyser.getByteFrequencyData(freqData);
+        const avg = freqData.reduce((a, b) => a + b, 0) / freqData.length;
+        const elapsed = Date.now() - recordStart;
+
+        if (avg > SILENCE_THRESHOLD) {
+          hasSpeech = true;
+          silenceStart = null;
+        } else if (hasSpeech) {
+          if (!silenceStart) silenceStart = Date.now();
+          const silenceDuration = Date.now() - silenceStart;
+          if (elapsed > MIN_DURATION && silenceDuration > SILENCE_DURATION) {
+            // Silencio detectado después de hablar → cortar
+            audioCtx.close();
+            clearTimeout(gRecordTimer);
+            if (mediaRecorder.state === 'recording') mediaRecorder.stop();
+            return;
+          }
+        }
+
+        if (elapsed >= MAX_DURATION) {
+          // Límite máximo alcanzado
+          audioCtx.close();
+          clearTimeout(gRecordTimer);
+          if (mediaRecorder.state === 'recording') mediaRecorder.stop();
+          return;
+        }
+
+        requestAnimationFrame(checkSilence);
+      }
+
+      requestAnimationFrame(checkSilence);
+
+      // Timer de respaldo en caso que requestAnimationFrame falle
       gRecordTimer = setTimeout(() => {
+        audioCtx.close();
         if (mediaRecorder && mediaRecorder.state === 'recording') {
           mediaRecorder.stop();
         }
-      }, 4000);  // 4 segundos - oración completa
+      }, MAX_DURATION + 500);
     } catch(err) {
       showError('Error de micrófono: ' + err.message);
     }
