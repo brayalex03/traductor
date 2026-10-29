@@ -70,7 +70,14 @@ wss.on('connection', (ws, req) => {
         );
 
         const sttData = await sttRes.json();
+        console.log(`STT mimeType=${mimeType} encoding=${encoding} sampleRate=${sampleRate} audioLen=${audio?.length}`);
+        if (sttData.error) {
+          console.error('STT error:', JSON.stringify(sttData.error));
+          ws.send(JSON.stringify({ type: 'error', message: `STT: ${sttData.error.message}` }));
+          return;
+        }
         const transcript = sttData.results?.[0]?.alternatives?.[0]?.transcript;
+        console.log(`STT resultado: "${transcript}"`);
         if (!transcript || transcript.trim() === '') return;
 
         console.log(`Transcripción: ${transcript}`);
