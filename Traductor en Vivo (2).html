@@ -858,7 +858,7 @@
   }
 
   async function sendToGoogleSTT(base64Audio) {
-    if (!sessionActive || isSpeaking || wsProcessing) return;
+    if (!sessionActive || isSpeaking) return;
 
     // ── Ruta rápida: WebSocket a Render ──
     if (wsReady && ws && ws.readyState === WebSocket.OPEN) {
