@@ -883,6 +883,18 @@
   async function handleFinal(text, sttMs) {
     if (!text) return;
     isSpeaking = true; stopListening();
+
+    // Si el WebSocket está listo, enviar audio por ahí (STT+traducción+TTS en Render)
+    if (wsReady && ws && ws.readyState === WebSocket.OPEN) {
+      setStatus('⚡ Procesando (WebSocket)...');
+      // Convertir texto a audio base64 simulado para reutilizar el pipeline de WebSocket
+      // En realidad enviamos el texto directamente como mensaje especial
+      ws.send(JSON.stringify({ type: 'text', text, mimeType: currentMimeType }));
+      // El resultado llega por ws.onmessage (transcript + translation + tts)
+      return;
+    }
+
+    // Fallback: pipeline local (sin WebSocket)
     try {
       setStatus('Traduciendo...');
       const t0 = Date.now();
