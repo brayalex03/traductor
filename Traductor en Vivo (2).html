@@ -439,6 +439,7 @@
 <script>
   const STT_PROXY_URL = 'https://traductor-eight-puce.vercel.app/api/stt';
   const TTS_PROXY_URL = 'https://traductor-eight-puce.vercel.app/api/tts';
+  const WS_URL = 'wss://traductor-oyl5.onrender.com';
 
   // Voces Google TTS por idioma
   const GOOGLE_VOICES = {
@@ -457,6 +458,63 @@
   let allVoices = [];
   let sttStart = 0;
   let sessionActive = false;
+
+  // WebSocket hacia Render
+  let ws = null;
+  let wsReady = false;
+
+  function connectWS() {
+    try {
+      ws = new WebSocket(WS_URL);
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ type: 'start', fromLang: listenLang, toLang: translateLang }));
+      };
+      ws.onmessage = async (e) => {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'ready') {
+          wsReady = true;
+          setStatus('⚡ WebSocket conectado');
+        }
+        if (msg.type === 'transcript' && msg.text) {
+          listenConfirmed += (listenConfirmed ? ' ' : '') + msg.text;
+          renderListenPanel('');
+          setStatus('Traduciendo...');
+        }
+        if (msg.type === 'translation' && msg.text) {
+          translateConfirmed += (translateConfirmed ? ' ' : '') + msg.text;
+          renderTranslatePanel();
+          setStatus('Hablando...');
+        }
+        if (msg.type === 'tts' && msg.audio) {
+          const audio = new Audio('data:audio/mp3;base64,' + msg.audio);
+          const ind = document.getElementById('speaking-indicator');
+          if (ind) ind.classList.add('visible');
+          isSpeaking = true;
+          await new Promise(resolve => {
+            audio.onended = resolve;
+            audio.onerror = resolve;
+            audio.play().catch(resolve);
+          });
+          if (ind) ind.classList.remove('visible');
+          isSpeaking = false;
+          sttStart = Date.now();
+          renderListenPanel('');
+          if (sessionActive) startListening();
+        }
+        if (msg.type === 'error') {
+          showError('Servidor: ' + msg.message);
+        }
+      };
+      ws.onerror = () => { wsReady = false; };
+      ws.onclose = () => {
+        wsReady = false;
+        // Reconectar después de 3s si la sesión sigue activa
+        if (sessionActive) setTimeout(connectWS, 3000);
+      };
+    } catch(e) {
+      wsReady = false;
+    }
+  }
 
   // Google Cloud STT (MediaRecorder)
   let mediaRecorder = null;
@@ -639,6 +697,7 @@
     sessionActive = true;
     useGoogleSTT = false;  // siempre empezar con Web Speech; Google STT solo si falla
     listenConfirmed = ''; translateConfirmed = '';
+    connectWS();  // conectar WebSocket a Render
     renderListenPanel('');
     renderTranslatePanel();
     document.getElementById('start-btn').textContent = '⏹ Detener Traducción';
@@ -714,6 +773,15 @@
 
   async function sendToGoogleSTT(base64Audio) {
     if (!sessionActive || isSpeaking) return;
+
+    // ── Ruta rápida: WebSocket a Render ──
+    if (wsReady && ws && ws.readyState === WebSocket.OPEN) {
+      setStatus('⚡ Procesando (WebSocket)...');
+      ws.send(JSON.stringify({ type: 'audio', audio: base64Audio, mimeType: currentMimeType }));
+      return;  // El resultado llega por ws.onmessage
+    }
+
+    // ── Fallback: Vercel (más lento) ──
     try {
       setStatus('Procesando...');
       const langCode = listenLang.split('-')[0] === 'es' ? 'es-US' : 'en-US';
@@ -721,7 +789,6 @@
         { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ audio: base64Audio, languageCode: langCode, mimeType: currentMimeType }) }
       );
       const d = await r.json();
-      // Mostrar respuesta completa para diagnóstico
       if (d.error) { showError('Google error: ' + JSON.stringify(d.error).substring(0,100)); return; }
       if (d.results && d.results.length > 0) {
         const text = d.results.map(r => r.alternatives[0].transcript).join(' ').trim();
@@ -734,7 +801,6 @@
         setStatus('Sin texto (mime:' + currentMimeType.substring(0,10) + ')');
       }
     } catch(err) {
-      // Si el proxy falla (red, CORS, URL incorrecta), volver a Web Speech si está disponible
       useGoogleSTT = false;
       showError('Google STT no disponible, volviendo a modo estándar...');
       setTimeout(() => { hideError(); if (sessionActive) startListening(); }, 2000);
