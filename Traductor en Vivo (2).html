@@ -462,6 +462,7 @@
   // WebSocket hacia Render
   let ws = null;
   let wsReady = false;
+  let wsProcessing = false;  // bloquea envíos duplicados mientras el servidor procesa
 
   function connectWS() {
     try {
@@ -469,7 +470,40 @@
       ws.onopen = () => {
         ws.send(JSON.stringify({ type: 'start', fromLang: listenLang, toLang: translateLang }));
       };
-      ws.onmessage = async (e) => {
+      // Cola de audio: evita que dos TTS se reproduzcan en paralelo
+      let ttsQueue = [];
+      let ttsPlaying = false;
+      async function playNextTTS() {
+        if (ttsPlaying || ttsQueue.length === 0) return;
+        ttsPlaying = true;
+        const audioB64 = ttsQueue.shift();
+        const audio = new Audio('data:audio/mp3;base64,' + audioB64);
+        const ind = document.getElementById('speaking-indicator');
+        if (ind) ind.classList.add('visible');
+        isSpeaking = true;
+        stopListening();
+        await new Promise(resolve => {
+          audio.onended = resolve;
+          audio.onerror = resolve;
+          audio.play().catch(resolve);
+        });
+        if (ind) ind.classList.remove('visible');
+        await new Promise(r => setTimeout(r, 800));
+        ttsPlaying = false;
+        // Si hay más en cola, reproducir el siguiente
+        if (ttsQueue.length > 0) {
+          playNextTTS();
+        } else {
+          // Cola vacía → reactivar micrófono
+          isSpeaking = false;
+          wsProcessing = false;
+          sttStart = Date.now();
+          renderListenPanel('');
+          if (sessionActive) startListening();
+        }
+      }
+
+      ws.onmessage = (e) => {
         const msg = JSON.parse(e.data);
         if (msg.type === 'ready') {
           wsReady = true;
@@ -486,23 +520,14 @@
           setStatus('Hablando...');
         }
         if (msg.type === 'tts' && msg.audio) {
-          const audio = new Audio('data:audio/mp3;base64,' + msg.audio);
-          const ind = document.getElementById('speaking-indicator');
-          if (ind) ind.classList.add('visible');
-          isSpeaking = true;
-          await new Promise(resolve => {
-            audio.onended = resolve;
-            audio.onerror = resolve;
-            audio.play().catch(resolve);
-          });
-          if (ind) ind.classList.remove('visible');
-          isSpeaking = false;
-          sttStart = Date.now();
-          renderListenPanel('');
-          if (sessionActive) startListening();
+          ttsQueue.push(msg.audio);
+          playNextTTS();
         }
         if (msg.type === 'error') {
+          wsProcessing = false;
+          isSpeaking = false;
           showError('Servidor: ' + msg.message);
+          if (sessionActive) startListening();
         }
       };
       ws.onerror = () => { wsReady = false; };
@@ -749,13 +774,66 @@
         const base64 = await blobToBase64(blob);
         await sendToGoogleSTT(base64);
       };
+      // Detección de silencio con AnalyserNode
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 512;
+      source.connect(analyser);
+      const freqData = new Uint8Array(analyser.frequencyBinCount);
+
+      let hasSpeech = false;
+      let silenceStart = null;
+      const SILENCE_THRESHOLD = 8;    // nivel mínimo de audio para considerar "habla"
+      const SILENCE_DURATION = 700;   // ms de silencio antes de cortar
+      const MAX_DURATION = 5000;      // máximo 5 segundos de grabación
+      const MIN_DURATION = 400;       // mínimo 400ms antes de poder cortar
+
       mediaRecorder.start();
       setStatus('Escuchando...');
+      const recordStart = Date.now();
+
+      function checkSilence() {
+        if (!mediaRecorder || mediaRecorder.state !== 'recording') return;
+        analyser.getByteFrequencyData(freqData);
+        const avg = freqData.reduce((a, b) => a + b, 0) / freqData.length;
+        const elapsed = Date.now() - recordStart;
+
+        if (avg > SILENCE_THRESHOLD) {
+          hasSpeech = true;
+          silenceStart = null;
+        } else if (hasSpeech) {
+          if (!silenceStart) silenceStart = Date.now();
+          const silenceDuration = Date.now() - silenceStart;
+          if (elapsed > MIN_DURATION && silenceDuration > SILENCE_DURATION) {
+            // Silencio detectado después de hablar → cortar
+            audioCtx.close();
+            clearTimeout(gRecordTimer);
+            if (mediaRecorder.state === 'recording') mediaRecorder.stop();
+            return;
+          }
+        }
+
+        if (elapsed >= MAX_DURATION) {
+          // Límite máximo alcanzado
+          audioCtx.close();
+          clearTimeout(gRecordTimer);
+          if (mediaRecorder.state === 'recording') mediaRecorder.stop();
+          return;
+        }
+
+        requestAnimationFrame(checkSilence);
+      }
+
+      requestAnimationFrame(checkSilence);
+
+      // Timer de respaldo en caso que requestAnimationFrame falle
       gRecordTimer = setTimeout(() => {
+        audioCtx.close();
         if (mediaRecorder && mediaRecorder.state === 'recording') {
           mediaRecorder.stop();
         }
-      }, 4000);  // 4 segundos - oración completa
+      }, MAX_DURATION + 500);
     } catch(err) {
       showError('Error de micrófono: ' + err.message);
     }
@@ -780,10 +858,11 @@
   }
 
   async function sendToGoogleSTT(base64Audio) {
-    if (!sessionActive || isSpeaking) return;
+    if (!sessionActive || isSpeaking || wsProcessing) return;
 
     // ── Ruta rápida: WebSocket a Render ──
     if (wsReady && ws && ws.readyState === WebSocket.OPEN) {
+      wsProcessing = true;
       setStatus('⚡ Procesando (WebSocket)...');
       ws.send(JSON.stringify({ type: 'audio', audio: base64Audio, mimeType: currentMimeType }));
       return;  // El resultado llega por ws.onmessage
@@ -907,6 +986,7 @@
       await speak(translated, translateLang);
       updateLatency(sttMs||0, apiMs, Date.now()-t1);
     } catch(e) { showError('Error de traducción.'); }
+    await new Promise(r => setTimeout(r, 800));
     isSpeaking = false;
     sttStart = Date.now();
     renderListenPanel('');
