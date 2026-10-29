@@ -496,6 +496,9 @@
             audio.play().catch(resolve);
           });
           if (ind) ind.classList.remove('visible');
+          // Esperar 800ms después del TTS antes de reactivar el mic
+          // para que el altavoz no se capte y se procese dos veces
+          await new Promise(r => setTimeout(r, 800));
           isSpeaking = false;
           sttStart = Date.now();
           renderListenPanel('');
@@ -960,6 +963,7 @@
       await speak(translated, translateLang);
       updateLatency(sttMs||0, apiMs, Date.now()-t1);
     } catch(e) { showError('Error de traducción.'); }
+    await new Promise(r => setTimeout(r, 800));
     isSpeaking = false;
     sttStart = Date.now();
     renderListenPanel('');
